@@ -25,13 +25,16 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	batchv1 "github.com/imad-elbouhati/cronjob-operator/api/v1"
+	"github.com/imad-elbouhati/cronjob-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -43,6 +46,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(batchv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -64,14 +68,14 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	var namespaces []string //List of Namespaces
-    defaultNamespaces := make(map[string]cache.Config)
-	
+	defaultNamespaces := make(map[string]cache.Config)
+
 	for _, ns := range namespaces {
 		defaultNamespaces[ns] = cache.Config{}
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
+		Scheme: scheme,
 		Cache: cache.Options{
 			DefaultNamespaces: defaultNamespaces,
 		},
@@ -96,6 +100,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controller.CronJobReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CronJob")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
